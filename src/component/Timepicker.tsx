@@ -108,10 +108,15 @@ function convertWorkingHours(
   return { organizerDay: day, dayLabel, hours: `${startFormatted}-${endFormatted}`, isNextDay };
 }
 
+interface WorkingHourItem {
+  dayLabel: string;
+  hours: string | string[];
+}
+
 
  function getTimeOption(
   dayName: string,
-  workingHours: any[],
+  workingHours: WorkingHourItem[],
   meetingDuration: number,
   bufferBefore: number = 0,
   bufferAfter: number = 0,
@@ -247,6 +252,11 @@ function convertWorkingHours(
 
   return options;
 }
+
+
+
+
+
 
 
 function handleTimezone(

@@ -6,15 +6,40 @@ import Timepicker from "../component/Timepicker";
 import DatePicker from "react-datepicker";
 import ApiClient from "../api/ApiClient";
 import { DateTime } from "luxon";
+interface BookingItem {
+ id: number;
+  organizer_id: number;
+  organizer_name: string;
+  name: string;
+  email: string;
+  user_timezone: string;
+  organizer_timezone: string;
+  status: string; // "booked" | "rescheduled" | "cancelled"
+  meeting_duration: number;
+  buffer_before: number;
+  buffer_after: number;
+  min_notice_minutes: number;
+  slot_start_utc: string;
+  slot_end_utc: string;
+  created_at: string;
+  working_hours: Record<string, string>; // { monday: "09:00-17:00", ... }
+  blackouts: string[]; // ["2025-11-17", "2025-12-10", ...]
+}
+interface PutResponse {
+  bookingId: number;
+  message: string;
+  status: string;
+}
+
 
 function Booking() {
   const { id } = useParams();
   const [showAlert, setShowAlert] = useState(false);
   const [selectedTime, setSelectedTime] = useState("");
-  const [dataPut, setDataPut] = useState<any>(null);
+  const [dataPut, setDataPut] = useState<PutResponse | null>(null);
   const [modalOpenSure, setModalOpenSure] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  const [selectedBooking, setSelectedBooking] = useState<any>(null);
+  const [selectedBooking, setSelectedBooking] = useState<BookingItem | null>(null);
   const [modalRescheduleOpen, setModalRescheduleOpen] = useState(false);
   const [workingHours, setWorkingHours] = useState<{ dayLabel: string; hours: string }[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -58,21 +83,32 @@ function Booking() {
 
    useEffect(() => {
     if (selectedDate) {
-     const dateString = DateTime.fromJSDate(selectedDate)
-    .toFormat("yyyy-MM-dd");
-  const organizerTz = data?.[0]?.organizer_timezone;
-  if (!organizerTz) return;
-  const dayName = DateTime.fromISO(dateString, { zone: data[0].organizer_timezone })
-    .toFormat("cccc");
-      const selected = DateTime.fromJSDate(selectedDate).setZone(data[0].organizer_timezone);
-      const timeOptions = getTimeOption(dayName, workingHours, data[0].meeting_duration, data[0].buffer_before, data[0].buffer_after, data[0].min_notice_minutes,selected);
-      setTimeOption(timeOptions);
+      console.log("ini date", selectedDate);
+      const organizerTz = data?.[0]?.organizer_timezone;
+if (!organizerTz) return;
+
+const selected = DateTime.fromJSDate(selectedDate)
+    .setZone(organizerTz, { keepLocalTime: true }); // penting
+const dayName = selected.toFormat("cccc");
+
+const timeOptions = getTimeOption(
+  dayName,
+  workingHours,
+  data[0].meeting_duration,
+  data[0].buffer_before,
+  data[0].buffer_after,
+  data[0].min_notice_minutes,
+  selected
+);
+
+setTimeOption(timeOptions);
+
     }
   }, [selectedDate]);
 
 
 
-  const openModal = (booking: any) => {
+  const openModal = (booking: BookingItem) => {
   setSelectedBooking(booking);
   setModalOpen(true);
 };
@@ -148,7 +184,7 @@ const ModalReschedule = () => {
           </label>
 
           <div className="grid grid-cols-1 gap-2">
-            {workingHours.map((hour: any) => (
+            {workingHours.map((hour) => (
               // display working hours
               <div
                 key={hour.dayLabel}
@@ -175,7 +211,6 @@ const ModalReschedule = () => {
             minDate={todayUser.toJSDate()}
             maxDate={maxDateUser.toJSDate()}
             filterDate={(date) => {
-    // Ambil nama hari dari tanggal (tanpa timezone conversion)
     const dayName = date
       .toLocaleDateString("en-US", { weekday: "long" })
       .toLowerCase();
@@ -211,34 +246,39 @@ const ModalReschedule = () => {
 
         {/* Buttons */}
         <div className="flex justify-end gap-2">
-
         <button
-  onClick={() => {
-    const payload = payloadBooking(
-      selectedBooking?.organizer_id,
-      selectedBooking?.id,
-      selectedDate,
-      selectedTime,
-      selectedBooking?.organizer_timezone
-    );
+ onClick={() => {
+  if (!selectedBooking) return null;
+  const idString = selectedBooking.id.toString();
+  const payload = payloadBooking(
+    selectedBooking.organizer_id,
+    idString,
+    selectedDate,
+    selectedTime,
+    selectedBooking.organizer_timezone
+  );
 
-    if (payload === false) {
-      return;
-    }
-    putData(
-      `book/booked/${selectedBooking?.id}/status`,
-      { payload }
-    );
-    setModalRescheduleOpen(false);
-  }}
-  className="py-2 px-4 bg-green-600 rounded hover:bg-green-500"
+  if (payload === false) {
+    return;
+  }
+
+  putData(
+    `book/booked/${selectedBooking.id}/status`,
+    { payload }
+  );
+
+  setModalRescheduleOpen(false);
+}}
+className="py-2 px-4 bg-green-600 rounded hover:bg-green-500"
 >
+
   Confirm Booked
 </button>
 
 
           <button
             onClick={() => {
+              if (!selectedBooking) return null;
               setModalRescheduleOpen(false);
               showAlertSure(
                 "Are you sure to reschedule this booking later?",
@@ -430,7 +470,7 @@ const Modal = () => {
             </thead>
             <tbody>
               {data && data.length > 0 ? (
-                data.map((booking: any) => (
+                data.map((booking) => (
                   <tr key={booking.id} className="border-b border-gray-700">
                     <td className="px-4 py-2">{booking.id}</td>
                     <td className="px-4 py-2">{booking.name}</td>

@@ -6,77 +6,25 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { DateTime } from "luxon";
 import Timepicker from "./../component/Timepicker";
+import NewTimepicker from "../component/NewTimepicker.tsx";
 import ShowAlert from "../component/ShowAlert";
 import Loading from "../component/Loading";
 
-/* ============================================================
-   TYPE DEFINITIONS (semua disimpan dalam file ini saja)
-   ============================================================ */
 
-type LuxonDateTime = InstanceType<typeof DateTime>;
+import type {
+  MeetingDetail,
+  MeetingSimple,
+  WorkingHourItem,
+  FormDataProps,
+  ConvertedBlackoutMeeting,
+} from "../types/meeting";
 
-interface WorkingHour {
-  start: string;
-  end: string;
-}
-
-interface WorkingHoursMap {
-  [day: string]: WorkingHour;
-}
-
-interface BlackoutRange {
-  id?: number;
-  start: string;
-  end: string;
-}
-
-interface ConvertedBlackout {
-  startUser: LuxonDateTime;
-  endUser: LuxonDateTime;
-}
-
-interface MeetingDetail {
-  id: number;
-  name: string;
-  timezone: string;
-  meeting_duration: number;
-  buffer_before: number;
-  buffer_after: number;
-  min_notice_minutes: number;
-  working_hours: WorkingHoursMap;
-  blackouts: BlackoutRange[];
-}
-
-interface FormDataProps {
-  meeting: MeetingDetail;
-  tzOption: string[];
-  timezones: string;
-  handleDayLabel: (...args: any[]) => any[];
-  convertBlackoutToUserRange: (
-    blackouts: BlackoutRange[],
-    tzFrom: string,
-    tzTo: string
-  ) => ConvertedBlackout[];
-  getTimeOption: (...args: any[]) => string[];
-  getSelectedTimeRange: (
-    date: Date,
-    time: string,
-    timezone: string
-  ) => { start: LuxonDateTime; end: LuxonDateTime } | null;
-  isTimeOverlap: (...args: any[]) => boolean;
-}
-
-/* ============================================================
-   FORM DATA COMPONENT
-   ============================================================ */
 
 function FormData({
   meeting,
   tzOption,
   timezones,
   handleDayLabel,
-  convertBlackoutToUserRange,
-  getTimeOption,
   getSelectedTimeRange,
   isTimeOverlap
 }: FormDataProps) {
@@ -89,11 +37,14 @@ function FormData({
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
   const [dayLabel, setDayLabel] = useState<string[]>([]);
-  const [blackout, setBlackout] = useState<ConvertedBlackout[]>([]);
+  const [blackout, setBlackout] = useState<ConvertedBlackoutMeeting[]>([]);
   const [message, setMessage] = useState<string>("");
   const [showAlert, setShowAlert] = useState<boolean>(false);
-  const [workingHours, setWorkingHours] = useState<any[]>([]);
 
+  const [workingHours, setWorkingHours] = useState<WorkingHourItem[]>([]);
+
+  const { getTimeOption } = Timepicker();
+  const { NewConvertBlackoutToUserRange } = NewTimepicker();
   const { loading, alert, setAlert, postData } = ApiClient();
 
   /* Meeting ID */
@@ -121,23 +72,19 @@ function FormData({
     }
   }, [showAlert]);
 
-  // useEffect(()=>{
-
-  // },[setMessage])
-
-  /* Convert blackout */
+  /* Convert blackout → user timezone */
   useEffect(() => {
     if (meeting) {
-      const result = convertBlackoutToUserRange(
+      const result = NewConvertBlackoutToUserRange(
         meeting.blackouts,
-        meeting.timezone,
-        timezones
+        timezones,          // user timezone
+        meeting.timezone    // organizer timezone
       );
       setBlackout(result);
     }
   }, [meeting]);
 
-  /* Date change -> generate time option */
+  /* Saat tanggal dipilih, generate time options */
   useEffect(() => {
     if (selectedDate) {
       const dateString = DateTime.fromJSDate(selectedDate).toFormat("yyyy-MM-dd");
@@ -146,34 +93,41 @@ function FormData({
 
       const timeOptions = getTimeOption(
         dayName,
-        workingHours,
+        workingHours,                    // sudah WorkingHourItem[]
         meeting.meeting_duration,
         meeting.buffer_before,
         meeting.buffer_after,
         meeting.min_notice_minutes,
         selected
       );
+
       setTimeOption(timeOptions);
     }
-  }, [selectedDate]);
+  }, [selectedDate, workingHours]);
 
-  /* Working hours convert */
+  /* Convert working hours → user timezone (handleDayLabel) */
   useEffect(() => {
     if (timezones && meeting.timezone && meeting.working_hours) {
-      const converted = handleDayLabel(
-        meeting.timezone,
-        timezones,
-        meeting.working_hours
-      );
+      const apiWorkingHours: Record<string, string> = Object.fromEntries(
+  Object.entries(meeting.working_hours).map(([day, wh]) => [
+    day,
+    `${wh.start}-${wh.end}`
+  ])
+);
+const converted = handleDayLabel(
+  meeting.timezone,
+  timezones,
+  apiWorkingHours
+);
 
-      setWorkingHours(converted);
+      setWorkingHours(converted);   // ← WorkingHourItem[]
 
-      const allowedDays = converted.map((d: any) => d.dayLabel.toLowerCase());
+      const allowedDays = converted.map(d => d.dayLabel.toLowerCase());
       setDayLabel(allowedDays);
     }
   }, [meeting]);
 
-  /* Set default timezone */
+  /* Default timezone */
   useEffect(() => {
     setSelectedTimezone(timezones);
   }, []);
@@ -224,7 +178,7 @@ function FormData({
   /* Render */
   return (
     <>
-      <form>
+      <form onSubmit={handleSubmit}>
         <div className="space-y-12">
           <div className="border-b border-white/10 pb-12">
             <h2 className="text-base/7 font-semibold text-white">
@@ -322,7 +276,6 @@ function FormData({
         <div className="mt-6 flex items-center justify-end">
           <button
             type="submit"
-            onClick={handleSubmit}
             className="rounded-md bg-indigo-500 px-3 py-2 text-sm font-semibold text-white"
           >
             Submit
@@ -338,6 +291,22 @@ function FormData({
    ============================================================ */
 
 
+function convertMeeting(meeting: MeetingSimple): MeetingDetail {
+  return {
+    ...meeting,
+    working_hours: Object.fromEntries(
+      Object.entries(meeting.working_hours).map(([day, hrs]) => {
+        const [start, end] = hrs.split("-");
+        return [day, { start, end }];
+      })
+    ),
+    blackouts: meeting.blackouts.map((date, i) => ({
+      id: i + 1,
+      start: date,
+      end: date
+    }))
+  };
+}
 
 /* ============================================================
    DETAIL BOOK PAGE
@@ -347,14 +316,11 @@ function DetailBook() {
   const { id } = useParams();
   const { data, loading, alert, setAlert, fetchData } = ApiClient();
   const [showAlert, setShowAlert] = useState(false);
-
   const {
     handleTimezone,
     timezones,
     tzOption,
     handleDayLabel,
-    convertBlackoutToUserRange,
-    getTimeOption,
     getSelectedTimeRange,
     isTimeOverlap
   } = Timepicker();
@@ -370,8 +336,12 @@ function DetailBook() {
 
   if (loading) return <Loading />;
 
-  const meeting: MeetingDetail | undefined = data?.[0];
-
+  const meeting = data?.[0] as MeetingSimple;
+  let meetingDetailList: MeetingDetail = {} as MeetingDetail;
+  if(meeting){
+       meetingDetailList = convertMeeting(meeting);
+  }
+  
   return (
     <>
     {/* <Navbar timezones={timezones} /> */}
@@ -414,7 +384,7 @@ function DetailBook() {
               </h3>
               {meeting.working_hours ? (
                 <ul className="space-y-2 text-gray-300">
-                  {Object.entries(meeting.working_hours).map(([day, hours]: [string, any]) => (
+                  {Object.entries(meeting.working_hours).map(([day, hours]: [string, string]) => (
                     <li
                       key={day}
                       className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-gray-700 pb-2"
@@ -438,14 +408,10 @@ function DetailBook() {
                   </h4>
                    {meeting.blackouts.length > 0 ? (
                   <ul className="space-y-2 text-gray-300">
-                   {meeting.blackouts.map((blackout: any) => (
-                    <li
-                      key={blackout.id}
-                      className="flex justify-between border-b border-gray-700 pb-1"
-                    >
-                      <span className="capitalize">{blackout}</span>
-                    </li> 
-                   ))}
+                    {meeting.blackouts.map((date, i) => (
+  <li key={i}>{date}</li>
+))}
+
                   </ul>
                   ) : (
                     <p className="text-gray-500 italic">No blackout set</p>
@@ -492,7 +458,15 @@ function DetailBook() {
               <h3 className="text-lg font-semibold text-indigo-300 mb-4">
                 Form Meeting
               </h3>
-             <FormData meeting={meeting} tzOption={tzOption} timezones={timezones} handleDayLabel={handleDayLabel} convertBlackoutToUserRange={convertBlackoutToUserRange} getTimeOption={getTimeOption} getSelectedTimeRange={getSelectedTimeRange} isTimeOverlap={isTimeOverlap}/>
+            <FormData 
+              meeting={meetingDetailList}
+              tzOption={tzOption}
+              timezones={timezones}
+              handleDayLabel={handleDayLabel}
+              getSelectedTimeRange={getSelectedTimeRange}
+              isTimeOverlap={isTimeOverlap}
+            />
+
             </div>
           </div>
           {/* Footer */}

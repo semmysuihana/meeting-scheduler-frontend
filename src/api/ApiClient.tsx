@@ -13,13 +13,34 @@ interface ApiError {
   error?: string;
 }
 
+interface Booking {
+  id: number;
+  organizer_id: number;
+  organizer_name: string;
+  name: string;
+  email: string;
+  user_timezone: string;
+  organizer_timezone: string;
+  timezone: string;
+  status: string; // "booked" | "rescheduled" | "cancelled"
+  meeting_duration: number;
+  buffer_before: number;
+  buffer_after: number;
+  min_notice_minutes: number;
+  slot_start_utc: string;
+  slot_end_utc: string;
+  created_at: string;
+  working_hours: Record<string, string>; // { monday: "09:00-17:00", ... }
+  blackouts: string[]; // ["2025-11-17", "2025-12-10", ...]
+}
+
 
 // ------------------------------
 // API CLIENT HOOK
 // ------------------------------
 
 export default function ApiClient() {
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(false);
   const [alert, setAlert] = useState("");
 
@@ -102,7 +123,12 @@ export default function ApiClient() {
   // ------------------------------
   // SUCCESS / ERROR ALERT HANDLER
   // ------------------------------
-  function handleMessage(res: any) {
+  interface ApiResponse {
+  success?: string;
+  error?: string;
+}
+
+  function handleMessage(res: ApiResponse) {
     if (res.success) setAlert(res.success);
     if (res.error) setAlert(res.error);
   }

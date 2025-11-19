@@ -1,19 +1,67 @@
 import { useEffect, useState } from "react";
+import type { ChangeEvent } from "react";
 import { useParams } from "react-router-dom";
 import ApiClient from "../api/ApiClient";
 import Loading from "../component/Loading";
 import ShowAlert from "../component/ShowAlert";
 import Timepicker from "../component/Timepicker";
 
+// -----------------------------
+// TYPES
+// -----------------------------
+interface WorkingHour {
+  day: string;
+  start: string;
+  end: string;
+}
+
+interface FormState {
+  name: string;
+  meeting_duration: string | number;
+  min_notice_minutes: string | number;
+  buffer_before: string | number;
+  buffer_after: string | number;
+  timezone: string;
+  working_hours: WorkingHour[];
+  blackouts: string[];
+}
+
+interface ValidationResult {
+  failed: boolean;
+  message: string;
+}
+
+type GeneralData = {
+  name: string;
+  meeting_duration: number;
+  min_notice_minutes: number;
+  buffer_before: number;
+  buffer_after: number;
+  timezone: string;
+};
+
+type WorkingHoursData = {
+  working_hours: Record<string, string>;
+};
+
+type BlackoutsData = {
+  blackouts: string[];
+  timezone?: string;
+};
+
+type CheckDataInput = GeneralData | WorkingHoursData | BlackoutsData;
+
+// -----------------------------
+// COMPONENT
+// -----------------------------
 export default function EditSetting() {
   const { id, edit } = useParams();
   const { data, loading, alert, setAlert, fetchData, putData } = ApiClient();
   const { tzOption } = Timepicker();
-  console.log('tzOption', tzOption);
 
   const [showAlert, setShowAlert] = useState(false);
 
-  const [form, setForm] = useState<any>({
+  const [form, setForm] = useState<FormState>({
     name: "",
     meeting_duration: "",
     min_notice_minutes: "",
@@ -24,10 +72,7 @@ export default function EditSetting() {
     blackouts: [],
   });
 
-  const DAYS = [
-    "monday", "tuesday", "wednesday", "thursday",
-    "friday", "saturday", "sunday"
-  ];
+  const DAYS = ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"];
 
   // Reset alert setelah tertutup
   useEffect(() => {
@@ -51,14 +96,14 @@ export default function EditSetting() {
     const d = data[0];
     const apiHours = d.working_hours || {};
 
-    const fullWorkingHours = DAYS.map((day) => {
+    const fullWorkingHours: WorkingHour[] = DAYS.map((day) => {
       if (apiHours[day]) {
         const [start, end] = apiHours[day].split("-");
         return { day, start, end };
       }
       return { day, start: "", end: "" };
     });
-
+    console.log("ini data", d)
     setForm({
       name: d.name || "",
       meeting_duration: d.meeting_duration || "",
@@ -74,172 +119,229 @@ export default function EditSetting() {
   // ---------------------------
   // FORM HANDLERS
   // ---------------------------
-  const handleChange = (e: any) => {
+  const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
   // ---------------------------
-  // NORMALIZERS
-  // ---------------------------
-  const normalizeGeneral = (f: any) => ({
-    name: f.name,
-    meeting_duration: Number(f.meeting_duration),
-    min_notice_minutes: Number(f.min_notice_minutes),
-    buffer_before: Number(f.buffer_before),
-    buffer_after: Number(f.buffer_after),
-    timezone: f.timezone,
-  });
-
-  const dayOrder = [...DAYS];
-
-  const normalizeWorkingHours = (arr: any[]) => {
-    const obj: any = {};
-
-    arr.forEach((item) => {
-      if (item.start && item.end) {
-        obj[item.day] = `${item.start}-${item.end}`;
-      }
-    });
-
-    const sorted: any = {};
-    dayOrder.forEach((day) => {
-      if (obj[day]) sorted[day] = obj[day];
-    });
-    return sorted;
-  };
-
-  const normalizeWorkingHoursForm = (input: any) => {
-    if (Array.isArray(input.working_hours)) {
-      return { working_hours: normalizeWorkingHours(input.working_hours) };
-    }
-
-    const obj = input.working_hours || {};
-    const sorted: any = {};
-    dayOrder.forEach((day) => {
-      if (obj[day]) sorted[day] = obj[day];
-    });
-    return { working_hours: sorted };
-  };
-
-  const normalizeBlackouts = (f: any) => ({
-    blackouts: f.blackouts,
-    timezone: f.timezone,
-  });
-
-  // ---------------------------
   // VALIDATIONS
   // ---------------------------
-  function checkData(data: any, type: string) {
-    const err = (m: string) => ({ failed: true, message: m });
+  function isGeneralData(data: CheckDataInput): data is GeneralData {
+  return (data as GeneralData).name !== undefined;
+}
 
-    if (type === "general") {
-      if (!data.name) return err("Name is required");
-      if (!data.meeting_duration) return err("Meeting duration is required");
-      if (data.meeting_duration < 30 || data.meeting_duration > 240)
-        return err("Meeting duration must be between 30 minutes and 4 hours");
+function isWorkingHoursData(data: CheckDataInput): data is WorkingHoursData {
+  return (data as WorkingHoursData).working_hours !== undefined;
+}
 
-      if (!data.min_notice_minutes)
-        return err("Min notice minutes is required");
-      if (data.min_notice_minutes < 0 || data.min_notice_minutes > 120)
-        return err("Min notice must be between 0 and 2 hours");
+function isBlackoutsData(data: CheckDataInput): data is BlackoutsData {
+  return (data as BlackoutsData).blackouts !== undefined;
+}
 
-      if (!data.buffer_before) return err("Buffer before is required");
-      if (data.buffer_before < 0 || data.buffer_before > 60)
-        return err("Buffer before must be 0–60 minutes");
 
-      if (!data.buffer_after) return err("Buffer after is required");
-      if (data.buffer_after < 0 || data.buffer_after > 60)
-        return err("Buffer after must be 0–60 minutes");
+function checkData(data: CheckDataInput, type: string): ValidationResult {
+  const err = (m: string) => ({ failed: true, message: m });
 
-      if (!data.timezone) return err("Timezone is required");
-    }
+  if (type === "general") {
+    if (!isGeneralData(data)) return err("Invalid data for general");
 
-    if (type === "working_hours") {
-      const hours = data.working_hours;
-      if (!hours || Object.keys(hours).length === 0)
-        return err("At least one working hour must be set");
+    if (!data.name) return err("Name is required");
+    if (!data.meeting_duration) return err("Meeting duration is required");
+    if (data.meeting_duration < 30 || data.meeting_duration > 240)
+      return err("Meeting duration must be between 30 minutes and 4 hours");
 
-      for (const day in hours) {
-        const val = hours[day];
-        if (!val) continue;
-        if (!/^\d{2}:\d{2}-\d{2}:\d{2}$/.test(val))
-          return err(`Invalid time format for ${day}: ${val}`);
+    if (!data.min_notice_minutes)
+      return err("Min notice minutes is required");
+    if (data.min_notice_minutes < 0 || data.min_notice_minutes > 120)
+      return err("Min notice must be between 0 and 2 hours");
 
-        const [start, end] = val
-          .split("-")
-          .map((t: string) => parseInt(t.replace(":", ""), 10));
+    if (!data.buffer_before) return err("Buffer before is required");
+    if (data.buffer_before < 0 || data.buffer_before > 60)
+      return err("Buffer before must be 0–60 minutes");
 
-        if (start >= end)
-          return err(`Start time must be before end time for ${day}`);
-      }
-    }
+    if (!data.buffer_after) return err("Buffer after is required");
+    if (data.buffer_after < 0 || data.buffer_after > 60)
+      return err("Buffer after must be 0–60 minutes");
 
-    if (type === "blackouts") {
-      const dates = data.blackouts;
-      if (!dates) return { failed: false, message: "" };
-
-      for (const d of dates) {
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(d))
-          return err(`Invalid date format: ${d}`);
-      }
-
-      const unique = new Set(dates);
-      if (unique.size !== dates.length)
-        return err("Duplicate dates are not allowed");
-    }
-
-    return { failed: false, message: "" };
+    if (!data.timezone) return err("Timezone is required");
   }
+if (type === "working_hours") {
+  if (!isWorkingHoursData(data)) return err("Invalid data for working hours");
+
+  const hours = data.working_hours;
+  if (!hours || Object.keys(hours).length === 0)
+    return err("At least one working hour must be set");
+
+  for (const day in hours) {
+    const val = hours[day];
+    if (!val) continue;
+
+    if (!/^\d{2}:\d{2}-\d{2}:\d{2}$/.test(val))
+      return err(`Invalid time format for ${day}: ${val}`);
+
+    const [start, end] = val
+      .split("-")
+      .map(t => parseInt(t.replace(":", ""), 10));
+
+    if (start >= end)
+      return err(`Start time must be before end time for ${day}`);
+  }
+}
+
+
+
+  if (type === "blackouts") {
+    if (!isBlackoutsData(data)) return err("Invalid data for blackouts");
+
+    const dates = data.blackouts;
+    if (!dates) return { failed: false, message: "" };
+
+    for (const d of dates) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d))
+        return err(`Invalid date format: ${d}`);
+    }
+
+    const unique = new Set(dates);
+    if (unique.size !== dates.length)
+      return err("Duplicate dates are not allowed");
+  }
+
+  return { failed: false, message: "" };
+}
+
+
+// ----------------------
+// TYPE DEFINITIONS
+// ----------------------
+type MySectionType = "general" | "working_hours" | "blackouts";
+
+interface MyWorkingHour {
+  day: string;
+  start: string;
+  end: string;
+}
+
+interface MyFormState {
+  name: string;
+  meeting_duration: number;
+  min_notice_minutes: number;
+  buffer_before: number;
+  buffer_after: number;
+  timezone: string;
+  working_hours: MyWorkingHour[];
+  blackouts: string[];
+}
+interface ApiBooking {
+  name: string;
+  meeting_duration: number;
+  min_notice_minutes: number;
+  buffer_before: number;
+  buffer_after: number;
+  timezone: string;
+  working_hours?: Record<string, string>; // misal: { monday: "09:00-17:00", ... }
+  blackouts?: string[];
+}
+// ----------------------
+// MAPPING FUNCTION
+// ----------------------
+function mapBookingToMyForm(booking: ApiBooking): MyFormState {
+  console.log("ini booking", booking);
+  // Pastikan semua field ada dan type sesuai MyFormState
+  const DAYS = ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"];
+  const apiHours = booking.working_hours || {};
+
+  const fullWorkingHours: MyWorkingHour[] = DAYS.map(day => {
+    if (apiHours[day]) {
+      const [start, end] = apiHours[day].split("-");
+      return { day, start, end };
+    }
+    return { day, start: "", end: "" };
+  });
+
+  return {
+    name: booking.name || "",
+    meeting_duration: booking.meeting_duration || 60,
+    min_notice_minutes: booking.min_notice_minutes || 60,
+    buffer_before: booking.buffer_before || 0,
+    buffer_after: booking.buffer_after || 0,
+    timezone: booking.timezone || "",
+    working_hours: fullWorkingHours,
+    blackouts: booking.blackouts || [],
+  };
+}
+
+function workingHoursArrayToRecord(
+  arr: MyWorkingHour[]
+): Record<string, string> {
+  const rec: Record<string, string> = {};
+
+  arr.forEach(h => {
+    if (h.start && h.end) {
+      rec[h.day] = `${h.start}-${h.end}`;
+    }
+  });
+
+  return rec;
+}
+
 
   // ---------------------------
   // SUBMIT HANDLER
   // ---------------------------
-  const handleSubmit = async () => {
-    if (!form || !data[0]) return;
+const handleSubmit = async () => {
+  if (!form || !data[0]) return;
 
-    let originalSection: any = {};
-    let editedSection: any = {};
+  const originalForm = mapBookingToMyForm(data[0]);
 
-    switch (edit) {
-      case "general":
-        originalSection = normalizeGeneral(data[0]);
-        editedSection = normalizeGeneral(form);
-        break;
-      case "working_hours":
-        originalSection = normalizeWorkingHoursForm(data[0]);
-        editedSection = normalizeWorkingHoursForm(form);
-        break;
-      case "blackouts":
-        originalSection = normalizeBlackouts(data[0]);
-        editedSection = normalizeBlackouts(form);
-        break;
-      default:
-        return;
-    }
+  let fieldsToCompare: (keyof MyFormState)[] = [];
+  switch (edit as MySectionType) {
+    case "general":
+      fieldsToCompare = [
+        "name",
+        "meeting_duration",
+        "min_notice_minutes",
+        "buffer_before",
+        "buffer_after",
+        "timezone"
+      ];
+      break;
+    case "working_hours":
+      fieldsToCompare = ["working_hours"];
+      break;
+    case "blackouts":
+      fieldsToCompare = ["blackouts"];
+      break;
+    default:
+      return;
+  }
+  console.log("form:", form);
+  console.log("originalForm:", originalForm);
+  const isChanged = fieldsToCompare.some(key =>
+    JSON.stringify(originalForm[key]) !== JSON.stringify(form[key])
+  );
 
-    if (JSON.stringify(originalSection) === JSON.stringify(editedSection)) {
-      return setAlert("Nothing changed!");
-    }
+  if (!isChanged) return setAlert("Nothing changed!");
 
-    const validation = checkData(editedSection, edit!);
-    if (validation.failed) return setAlert(validation.message);
+  // ⬇️ CONVERT sebelum validasi & PUT
+  let submitData: CheckDataInput = form;
 
-    console.log("editedSection", editedSection);
+  if (edit === "working_hours") {
+    submitData = {
+      ...form,
+      working_hours: workingHoursArrayToRecord(form.working_hours),
+    };
+  }
 
-    putData(`settings/${edit}/${id}`, editedSection);
-  };
+  // validasi berdasarkan format lama
+  const validation = checkData(submitData, edit as MySectionType);
+  if (validation.failed) return setAlert(validation.message);
 
-  // ---------------------------
-  // PAGE TITLE
-  // ---------------------------
-  const Title = () => {
-    switch (edit) {
-      case "general": return "General Settings";
-      case "working_hours": return "Working Hours";
-      case "blackouts": return "Blackout Dates";
-      default: return "Edit Settings";
-    }
-  };
+  // kirim data yang SUDAH DIKONVERSI
+  putData(`settings/${edit}/${id}`, submitData);
+};
+
+
+
 
   // ---------------------------
   // RENDER
@@ -250,7 +352,7 @@ export default function EditSetting() {
       {loading && <Loading />}
 
       <div className="container mx-auto text-white">
-        <h1 className="text-3xl font-bold mb-6">{Title()}</h1>
+        <h1 className="text-3xl font-bold mb-6">{edit?.replace("_", " ").toUpperCase()}</h1>
 
         <div className="bg-gray-800 p-6 rounded-xl shadow-md space-y-6">
           
@@ -272,7 +374,7 @@ export default function EditSetting() {
                 value={form.buffer_after} onChange={handleChange} />
 
               <FormOption label="Timezone" name="timezone" value={form.timezone} onChange={handleChange}>
-                {tzOption.map((tz: any) => (
+                {tzOption.map((tz: string) => (
                   <option key={tz} value={tz}>
                      {tz}
                   </option>
@@ -286,7 +388,7 @@ export default function EditSetting() {
             <div>
               <label className="block mb-4 font-semibold text-lg">Working Hours</label>
 
-              {form.working_hours.map((w: any, i: number) => (
+              {form.working_hours.map((w: MyWorkingHour, i: number) => (
                 <div
                   key={i}
                   className="grid grid-cols-4 gap-4 mb-4 items-center bg-gray-700 p-4 rounded-lg"
@@ -386,8 +488,18 @@ export default function EditSetting() {
   );
 }
 
-/* Small form components */
-function FormInput({ label, name, value, onChange, type = "text" }: any) {
+// ---------------------------
+// Small form components
+// ---------------------------
+interface FormInputProps {
+  label: string;
+  name: string;
+  value: string | number;
+  onChange: (e: ChangeEvent<HTMLInputElement>) => void;
+  type?: string;
+}
+
+function FormInput({ label, name, value, onChange, type = "text" }: FormInputProps) {
   return (
     <div>
       <label className="block text-sm font-semibold mb-1">{label}</label>
@@ -402,7 +514,15 @@ function FormInput({ label, name, value, onChange, type = "text" }: any) {
   );
 }
 
-function FormOption({ label, name, value, onChange, children }: any) {
+interface FormOptionProps {
+  label: string;
+  name: string;
+  value: string;
+  onChange: (e: ChangeEvent<HTMLSelectElement>) => void;
+  children: React.ReactNode;
+}
+
+function FormOption({ label, name, value, onChange, children }: FormOptionProps) {
   return (
     <div>
       <label className="block text-sm font-semibold mb-1">{label}</label>
