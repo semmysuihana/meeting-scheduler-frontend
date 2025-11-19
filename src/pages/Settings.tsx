@@ -1,15 +1,37 @@
+import { useState, useEffect } from "react";
+import { useParams, Link } from "react-router-dom";
 import ApiClient from "../api/ApiClient";
 import Loading from "../component/Loading";
 import ShowAlert from "../component/ShowAlert";
-import { useState, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
 
-function Setting() {
-  const { id } = useParams();
+// ==========================
+// TYPE DEFINITIONS
+// ==========================
+interface WorkingHours {
+  [day: string]: string; // contoh: "monday": "09:00 - 17:00"
+}
+
+interface SettingData {
+  name: string;
+  timezone: string;
+  meeting_duration: number;
+  min_notice_minutes: number;
+  buffer_before: number;
+  buffer_after: number;
+  working_hours: WorkingHours;
+  blackouts: string[];
+}
+
+// ==========================
+// COMPONENT
+// ==========================
+export default function Setting() {
+  const { id } = useParams<{ id: string }>();
   const [showAlert, setShowAlert] = useState(false);
 
   const { data, loading, alert, setAlert, fetchData } = ApiClient();
 
+  // Fetch ketika ID valid
   useEffect(() => {
     if (id && !isNaN(Number(id))) {
       fetchData(`book/${id}`);
@@ -18,40 +40,48 @@ function Setting() {
     }
   }, [id]);
 
+  // Reset alert ketika alert box ditutup
+  useEffect(() => {
+    if (!showAlert) {
+      setAlert("");
+    }
+  }, [showAlert]);
+
+  // Tampilkan alert otomatis ketika alert berubah
   useEffect(() => {
     if (alert) setShowAlert(true);
   }, [alert]);
 
-  const setting = data && data[0];
+  // Pastikan data array dan ambil index 0
+  const setting: SettingData | null =
+    Array.isArray(data) && data.length > 0 ? data[0] : null;
 
   return (
     <>
-      {showAlert && <ShowAlert message={alert} setShowAlert={setShowAlert} />}
+      {showAlert && <ShowAlert alert={alert} setShowAlert={setShowAlert} />}
       {loading && <Loading />}
 
       <div className="container mx-auto text-white">
-
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold">Settings</h1>
-
         </div>
 
         {/* DATA */}
         {setting ? (
           <div className="space-y-6">
-
             {/* General Info */}
             <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
               <div className="flex justify-between items-center mb-3">
                 <h2 className="text-xl font-semibold">General</h2>
-                 {id && (
-            <Link
-              to={`/organizer/${id}/settings/edit/general`}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium"
-            >
-              Edit General
-            </Link>
-          )}
+
+                {id && (
+                  <Link
+                    to={`/organizer/${id}/settings/edit/general`}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium"
+                  >
+                    Edit General
+                  </Link>
+                )}
               </div>
 
               <p><span className="font-semibold">Name:</span> {setting.name}</p>
@@ -66,14 +96,15 @@ function Setting() {
             <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
               <div className="flex justify-between items-center mb-3">
                 <h2 className="text-xl font-semibold">Working Hours</h2>
-                 {id && (
-            <Link
-              to={`/organizer/${id}/settings/edit/working_hours`}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium"
-            >
-              Edit Working Hours
-            </Link>
-          )}
+
+                {id && (
+                  <Link
+                    to={`/organizer/${id}/settings/edit/working_hours`}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium"
+                  >
+                    Edit Working Hours
+                  </Link>
+                )}
               </div>
 
               <table className="w-full text-left text-gray-300">
@@ -98,23 +129,23 @@ function Setting() {
             <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
               <div className="flex justify-between items-center mb-3">
                 <h2 className="text-xl font-semibold">Blackouts</h2>
+
                 {id && (
-            <Link
-              to={`/organizer/${id}/settings/edit/blackouts`}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium"
-            >
-              Edit Blackouts
-            </Link>
-          )}
+                  <Link
+                    to={`/organizer/${id}/settings/edit/blackouts`}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium"
+                  >
+                    Edit Blackouts
+                  </Link>
+                )}
               </div>
 
               <ul className="list-disc list-inside text-gray-300 space-y-1">
-                {setting.blackouts.map((date: string, index: number) => (
+                {setting.blackouts.map((date, index) => (
                   <li key={index}>{date}</li>
                 ))}
               </ul>
             </div>
-
           </div>
         ) : (
           <p className="text-gray-400">No data found.</p>
@@ -123,5 +154,3 @@ function Setting() {
     </>
   );
 }
-
-export default Setting;

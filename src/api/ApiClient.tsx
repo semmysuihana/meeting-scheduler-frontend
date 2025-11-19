@@ -1,50 +1,111 @@
-import { useState, useEffect } from "react";
-import axios from "axios";
+/// <reference types="vite/client" />
+
+import { useState } from "react";
+import axios, { AxiosError } from "axios";
 
 const serverName = import.meta.env.VITE_SERVER_API;
 
+// ------------------------------
+// TYPE DEFINITIONS
+// ------------------------------
+interface ApiError {
+  message?: string;
+  error?: string;
+}
+
+
+// ------------------------------
+// API CLIENT HOOK
+// ------------------------------
+
 export default function ApiClient() {
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [alert, setAlert] = useState<string>("");
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [alert, setAlert] = useState("");
 
-  async function fetchData(endpoint: string = "", params: any = {}) {
+  const buildUrl = (endpoint: string="") =>
+    endpoint ? `${serverName}/${endpoint}` : serverName;
+
+  // ------------------------------
+  // GET
+  // ------------------------------
+  async function fetchData(endpoint: string = "", params: object = {}) {
     setLoading(true);
-    
     try {
-      const url = endpoint ? `${serverName}/${endpoint}` : serverName;
+      const response = await axios.get(buildUrl(endpoint), {
+        params,
+      });
 
-      const response = await axios.get(url, { params });
-      if(response.data.length === 0) throw new Error("Data not found");
-      console.log("ini data",response.data);
-      setData(response.data);
-      setAlert("");
-    } catch (err: any) {
-      console.error(err);
-      setAlert(err.response?.data?.message || err.message || "Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function postData(endpoint: string = "", data: any = {}) {
-    
-    try {
-      setLoading(true);
-      const url = endpoint ? `${serverName}/${endpoint}` : serverName;
-      const response = await axios.post(url, data);
-      console.log("ini data post",response.data);
-      if(response.data){
-        if(response.data.success) setAlert(response.data.success);
-        if(response.data.error) setAlert(response.data.error);
+      if (!response.data) {
+        throw new Error("Data not found");
       }
-    } catch (err: any) {
-      console.error(err);
-      setAlert(err.response?.data?.message || err.message || "Unknown error");
+      console.log("API Response:", response.data);
+      setData(response.data);
+    } catch (err) {
+      handleError(err);
     } finally {
       setLoading(false);
     }
   }
 
-  return { data, loading, alert, setAlert, fetchData, postData };
+  // ------------------------------
+  // POST
+  // ------------------------------
+  async function postData(endpoint?: string, body: object = {}) {
+    setLoading(true);
+    try {
+      const response = await axios.post(
+        buildUrl(endpoint),
+        body
+      );
+      handleMessage(response.data);
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ------------------------------
+  // PUT
+  // ------------------------------
+  async function putData(endpoint?: string, body: object = {}) {
+    setLoading(true);
+    try {
+      const response = await axios.put(
+        buildUrl(endpoint),
+        body
+      );
+      handleMessage(response.data);
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ------------------------------
+  // ERROR HANDLER
+  // ------------------------------
+  function handleError(error: unknown) {
+    const err = error as AxiosError<ApiError>;
+    const msg =
+      err.response?.data?.message ||
+      err.response?.data?.error ||
+      err.message ||
+      "Unknown error";
+
+    console.error("API Error:", msg);
+    setAlert(msg);
+  }
+
+  // ------------------------------
+  // SUCCESS / ERROR ALERT HANDLER
+  // ------------------------------
+  function handleMessage(res: any) {
+    if (res.success) setAlert(res.success);
+    if (res.error) setAlert(res.error);
+  }
+
+  return { data, loading, alert, setAlert, fetchData, postData, putData };
 }

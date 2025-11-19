@@ -1,7 +1,11 @@
 import { useState } from "react";
-import { Link, useLocation, Outlet } from "react-router-dom";
-import { useParams } from "react-router-dom";
-function Navbar({ setOpen }) {
+import { Link, useLocation, Outlet, useParams } from "react-router-dom";
+
+interface NavbarProps {
+  setOpen: React.Dispatch<React.SetStateAction<boolean>>;
+}
+
+function Navbar({ setOpen }: NavbarProps) {
   return (
     <nav className="fixed top-0 left-0 w-full h-14 bg-neutral-900 border-b border-neutral-700 z-50 px-4 flex items-center justify-between text-white">
       {/* Hamburger mobile */}
@@ -27,14 +31,21 @@ function Navbar({ setOpen }) {
   );
 }
 
-function Sidebar({ open, setOpen, id }) {
+// --- SIDEBAR ---
+
+interface SidebarProps {
+  open: boolean;
+  setOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  id: string | undefined;
+}
+
+function Sidebar({ open, setOpen, id }: SidebarProps) {
   const { pathname } = useLocation();
 
   const menus = [
-    { name: "Dashboard", path: `organizer/${id}/dashboard` },
-    { name: "Settings", path: `organizer/${id}/settings` },
-    { name: "Booking", path: `organizer/${id}/booking` },
-    
+    { name: "Dashboard", path: `/organizer/${id}/dashboard` },
+    { name: "Settings", path: `/organizer/${id}/settings` },
+    { name: "Booking", path: `/organizer/${id}/booking` },
   ];
 
   return (
@@ -49,7 +60,7 @@ function Sidebar({ open, setOpen, id }) {
 
       <aside
         className={`fixed top-0 left-0 h-full w-64 bg-neutral-900 text-white border-r border-neutral-700 z-40 transform transition-transform
-        ${open ? "translate-x-0" : "-translate-x-full"} sm:translate-x-0`}
+          ${open ? "translate-x-0" : "-translate-x-full"} sm:translate-x-0`}
       >
         <div className="px-4 py-4 text-xl font-semibold border-b border-neutral-700">
           Menu
@@ -78,9 +89,11 @@ function Sidebar({ open, setOpen, id }) {
   );
 }
 
+// --- LAYOUT ---
+
 function Layout() {
-  const { id } = useParams();
-  const [open, setOpen] = useState(false);
+  const { id } = useParams<{ id: string }>();
+  const [open, setOpen] = useState<boolean>(false);
 
   return (
     <div className="dark flex h-screen bg-neutral-800 text-white">
@@ -89,11 +102,8 @@ function Layout() {
 
       {/* Main area */}
       <div className="flex-1 flex flex-col sm:ml-64">
-
-        {/* Navbar */}
         <Navbar setOpen={setOpen} />
 
-        {/* MAIN CONTENT */}
         <main className="flex-1 pt-14 overflow-y-auto p-6 mt-6">
           <Outlet />
         </main>
