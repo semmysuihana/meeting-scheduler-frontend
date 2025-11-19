@@ -5,8 +5,12 @@ type LuxonDateTime = InstanceType<typeof DateTime>;
 export default function Timepicker() {
     const [timezones, setTimezones] = useState("");
         async function getTimezones() {
-        const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        // const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
         // const userTimeZone = "Asia/Jakarta";
+        let userTimeZone = localStorage.getItem("timezone");
+        if(!userTimeZone){
+          userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        }
         const match = tzOption.includes(userTimeZone);
 
         if (!match) return setTimezones("");
